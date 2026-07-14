@@ -4,6 +4,69 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
+$resolveMonitoringProject = function () {
+    return DB::table('data_project')
+        ->where('status', 'aktif')
+        ->where('apikey', 'e2907e0d85c49fcbff5ac006c696f6f9')
+        ->first() ?? DB::table('data_project')->where('status', 'aktif')->orderByDesc('id_project')->first();
+};
+
+$resolveMonitoringSensors = function ($projectId) {
+    return DB::table('data_sensor_project as sp')
+        ->join('data_sensor as s', 's.id_sensor', '=', 'sp.id_sensor')
+        ->where('sp.id_project', $projectId)
+        ->where('sp.status', 'aktif')
+        ->whereIn('sp.prefix', ['phair', 'suhu', 'kekeruhan'])
+        ->select('sp.id_sensor_project', 'sp.prefix', 's.nama_sensor', 's.satuan')
+        ->orderByRaw("FIELD(sp.prefix, 'phair', 'suhu', 'kekeruhan')")
+        ->get();
+};
+
+$buildMonitoringPayload = function ($project) use ($resolveMonitoringSensors) {
+    $sensors = $resolveMonitoringSensors($project->id_project);
+    $series = [];
+    $latest = [];
+
+    foreach ($sensors as $sensor) {
+        $rows = DB::table('data_input')
+            ->where('id_sensor_project', $sensor->id_sensor_project)
+            ->orderBy('waktu')
+            ->limit(50)
+            ->get(['waktu', 'nilai']);
+
+        $labels = $rows->map(fn ($row) => $row->waktu)->values();
+        $values = $rows->map(fn ($row) => is_numeric($row->nilai) ? (float) $row->nilai : $row->nilai)->values();
+        $current = DB::table('data_input')
+            ->where('id_sensor_project', $sensor->id_sensor_project)
+            ->orderByDesc('id_input')
+            ->first();
+
+        $latest[$sensor->prefix] = [
+            'nama_sensor' => $sensor->nama_sensor,
+            'satuan' => $sensor->satuan,
+            'nilai' => $current?->nilai ?? '-',
+            'waktu' => $current?->waktu ?? '-',
+        ];
+
+        $series[$sensor->prefix] = [
+            'id_sensor_project' => $sensor->id_sensor_project,
+            'nama_sensor' => $sensor->nama_sensor,
+            'satuan' => $sensor->satuan,
+            'labels' => $labels,
+            'values' => $values,
+        ];
+    }
+
+    return [
+        'project' => [
+            'id_project' => $project->id_project,
+            'nama_project' => $project->nama_project,
+        ],
+        'latest' => $latest,
+        'series' => $series,
+    ];
+};
+
 Route::match(['GET', 'POST'], 'server.php', function (Request $request) {
     $apikey = $request->input('apikey');
 
@@ -53,13 +116,27 @@ Route::match(['GET', 'POST'], 'server.php', function (Request $request) {
     ]);
 })->name('iot.server');
 
-Route::get('/', function () {
+Route::get('/api/monitoring', function () use ($resolveMonitoringProject, $buildMonitoringPayload) {
+    $project = $resolveMonitoringProject();
+
+    if (! $project) {
+        return response()->json(['message' => 'Project tidak ditemukan'], 404);
+    }
+
+    return response()->json($buildMonitoringPayload($project));
+})->name('monitoring.api');
+
+Route::get('/', function () use ($resolveMonitoringProject, $buildMonitoringPayload) {
     if (!session()->has('monitoring_user')) {
         return redirect()->route('login');
     }
 
+    $project = $resolveMonitoringProject();
+    $payload = $project ? $buildMonitoringPayload($project) : ['project' => null, 'latest' => [], 'series' => []];
+
     return view('dashboard', [
         'username' => session('monitoring_user'),
+        'payload' => $payload,
     ]);
 })->name('dashboard');
 
