@@ -14,6 +14,8 @@
         body { background:#fff; color:#393939; font-family: Arial, Helvetica, sans-serif; padding:10px 18px 20px; }
         .sensor-row { display:flex; gap:14px; align-items:stretch; flex-wrap:nowrap; }
         .sensor-panel { flex:1 1 0; min-width:0; }
+        .detail-row { display:flex; gap:14px; align-items:flex-start; flex-wrap:nowrap; }
+        .detail-panel { flex:1 1 0; min-width:0; }
         .header { line-height:28px; margin-bottom:16px; margin-top:18px; padding-bottom:4px; border-bottom:1px solid #CCC; }
         .smaller { font-size:21px; }
         .lighter { font-weight:lighter; }
@@ -29,7 +31,7 @@
         .top-actions { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
         .table thead th { background:#307ecc; color:#fff; text-align:center; }
         .table td { text-align:center; }
-        @media (max-width:768px){ .top-actions{flex-direction:column;} .sensor-row{flex-direction:column; flex-wrap:wrap;} canvas{height:280px!important;} }
+        @media (max-width:768px){ .top-actions{flex-direction:column;} .sensor-row,.detail-row{flex-direction:column; flex-wrap:wrap;} canvas{height:280px!important;} }
     </style>
 </head>
 <body>
@@ -67,10 +69,10 @@
     </div>
 
     <h3 class="header smaller lighter blue">Detail Sensor Realtime</h3>
-    <div class="row">
+    <div class="detail-row">
         @foreach (['phair' => 'PH Air', 'suhu' => 'Suhu Air', 'kekeruhan' => 'Kekeruhan Air'] as $key => $sensorLabel)
             @php($series = $payload['series'][$key] ?? ['labels' => [], 'values' => []])
-            <div class="col-sm-12" id="detail-{{ $key }}">
+            <div class="detail-panel" id="detail-{{ $key }}">
                 <h3 class="header smaller lighter green"># Detail {{ $sensorLabel }}</h3>
                 <div style="overflow-x:auto;">
                     <table class="table table-bordered">
