@@ -12,6 +12,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.3.0/Chart.bundle.js"></script>
     <style>
         body { background:#fff; color:#393939; font-family: Arial, Helvetica, sans-serif; padding:10px 18px 20px; }
+        .sensor-row { display:flex; gap:14px; align-items:stretch; flex-wrap:nowrap; }
+        .sensor-panel { flex:1 1 0; min-width:0; }
         .header { line-height:28px; margin-bottom:16px; margin-top:18px; padding-bottom:4px; border-bottom:1px solid #CCC; }
         .smaller { font-size:21px; }
         .lighter { font-weight:lighter; }
@@ -27,7 +29,7 @@
         .top-actions { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
         .table thead th { background:#307ecc; color:#fff; text-align:center; }
         .table td { text-align:center; }
-        @media (max-width:768px){ .top-actions{flex-direction:column;} canvas{height:280px!important;} }
+        @media (max-width:768px){ .top-actions{flex-direction:column;} .sensor-row{flex-direction:column; flex-wrap:wrap;} canvas{height:280px!important;} }
     </style>
 </head>
 <body>
@@ -43,10 +45,10 @@
         <form method="POST" action="{{ route('logout') }}">@csrf<button class="btn btn-danger" type="submit">Keluar</button></form>
     </div>
 
-    <div class="row">
-        @foreach (['phair' => 'PH Air', 'suhu' => 'Suhu Air', 'kekeruhan' => 'Kekeruhan Air'] as $key => $namaSensor)
-            @php($latest = $payload['latest'][$key] ?? ['nilai' => '-', 'waktu' => '-', 'satuan' => ''])
-            <div class="col-sm-4 sensor-panel">
+    <div class="sensor-row">
+        @foreach (["phair" => "PH Air", "suhu" => "Suhu Air", "kekeruhan" => "Kekeruhan Air"] as $key => $namaSensor)
+            @php($latest = $payload["latest"][$key] ?? ["nilai" => "-", "waktu" => "-", "satuan" => ""])
+            <div class="sensor-panel">
                 <h3 class="header smaller lighter green"># {{ $namaSensor }}</h3>
                 <canvas id="myChart{{ $key }}" width="100%" height="50"></canvas>
                 Lihat Tabel : <br>
