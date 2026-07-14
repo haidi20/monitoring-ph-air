@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
@@ -47,7 +47,7 @@
     <div class="top">
         <div class="brand">
             <h1>Monitoring PH Air</h1>
-            <p>Login sebagai <strong>{{ $username }}</strong> · data refresh tiap 1 detik</p>
+            <p>Login sebagai <strong>{{ $username }}</strong> Â· data refresh tiap 1 detik</p>
         </div>
         <form method="POST" action="{{ route('logout') }}" class="logout">@csrf<button type="submit">Keluar</button></form>
     </div>
@@ -63,7 +63,7 @@
             <div class="card">
                 <div class="metric-title">{{ $cfg['label'] }}</div>
                 <div class="metric-value" style="color: {{ $cfg['color'] }}" id="metric-{{ $key }}">{{ $item['nilai'] }}</div>
-                <div class="metric-meta" id="meta-{{ $key }}">{{ $item['waktu'] }} {{ $item['satuan'] ? '· '.$item['satuan'] : '' }}</div>
+                <div class="metric-meta" id="meta-{{ $key }}">{{ $item['waktu'] }} {{ $item['satuan'] ? 'Â· '.$item['satuan'] : '' }}</div>
                 <div class="actions">
                     <a href="#detail-{{ $key }}" class="btn-link secondary">Lihat detail</a>
                     <a href="#chart-{{ $key }}" class="btn-link">Ke grafik</a>
@@ -106,7 +106,7 @@
                             </thead>
                             <tbody id="table-{{ $key }}">
                                 @php($series = $payload['series'][$key] ?? ['labels' => [], 'values' => []])
-                                @foreach (array_slice($series['labels'], -10, 10, true) as $idx => $labelTime)
+                                @foreach (collect($series['labels'])->slice(-10) as $idx => $labelTime)
                                     <tr>
                                         <td>{{ $labelTime }}</td>
                                         <td>{{ $series['values'][$idx] ?? '-' }}</td>
@@ -173,7 +173,7 @@ function renderRows(key, series) {
 function updateMetric(key, item) {
     document.getElementById(`metric-${key}`).textContent = item?.nilai ?? '-';
     const waktu = item?.waktu ?? '-';
-    const satuan = item?.satuan ? ` · ${item.satuan}` : '';
+    const satuan = item?.satuan ? ` Â· ${item.satuan}` : '';
     document.getElementById(`meta-${key}`).textContent = `${waktu}${satuan}`;
     const pill = document.getElementById(`pill-${key}`);
     if (pill) pill.textContent = `${item?.nilai ?? '-'}${item?.satuan ? ' ' + item.satuan : ''}`;
@@ -207,3 +207,4 @@ setInterval(refreshData, 1000);
 </script>
 </body>
 </html>
+
