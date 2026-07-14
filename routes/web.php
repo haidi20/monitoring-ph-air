@@ -1,10 +1,10 @@
-<?php
+﻿<?php
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
-Route::match(['GET', 'POST'], '/server.php', function (Request $request) {
+Route::match(['GET', 'POST'], 'server.php', function (Request $request) {
     $apikey = $request->input('apikey');
 
     if (blank($apikey)) {
