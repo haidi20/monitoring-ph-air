@@ -40,7 +40,7 @@ bool useQuadratic = false;
 // ================= WIFI ===================
 const char* ssid = "wifi-iot";
 const char* password = "password-iot";
-const char* server_url = "http://labrobotika.go-web.my.id/server.php?apikey=";
+const char* server_url = "http://43.156.137.225/server.php?apikey=";
 const char* apikey = "e2907e0d85c49fcbff5ac006c696f6f9";
 
 unsigned long lastSend = 0;
