@@ -122,6 +122,26 @@ class MonitoringController extends Controller
         return response()->json($this->buildMonitoringPayload($project));
     }
 
+    public function detail(string $sensor)
+    {
+        if (! session()->has('monitoring_user')) {
+            return redirect()->route('login');
+        }
+
+        if (! in_array($sensor, ['phair', 'suhu', 'kekeruhan'], true)) {
+            abort(404);
+        }
+
+        $project = $this->resolveMonitoringProject();
+        $payload = $project ? $this->buildMonitoringPayload($project) : ['project' => null, 'latest' => [], 'series' => []];
+
+        return view('dashboard_detail', [
+            'username' => session('monitoring_user'),
+            'sensor' => $sensor,
+            'payload' => $payload,
+        ]);
+    }
+
     private function resolveMonitoringProject()
     {
         return DB::table('data_project')
@@ -152,12 +172,14 @@ class MonitoringController extends Controller
         foreach ($sensors as $sensor) {
             $rows = DB::table('data_input')
                 ->where('id_sensor_project', $sensor->id_sensor_project)
-                ->orderBy('waktu')
+                ->orderByDesc('id_input')
                 ->limit(50)
-                ->get(['waktu', 'nilai']);
+                ->get(['waktu', 'nilai'])
+                ->reverse()
+                ->values();
 
-            $labels = $rows->map(fn ($row) => $row->waktu)->values();
-            $values = $rows->map(fn ($row) => is_numeric($row->nilai) ? (float) $row->nilai : $row->nilai)->values();
+            $labels = $rows->map(fn ($row) => $row->waktu)->values()->all();
+            $values = $rows->map(fn ($row) => is_numeric($row->nilai) ? (float) $row->nilai : $row->nilai)->values()->all();
             $current = DB::table('data_input')
                 ->where('id_sensor_project', $sensor->id_sensor_project)
                 ->orderByDesc('id_input')

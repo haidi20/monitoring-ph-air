@@ -1,210 +1,123 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitoring PH Air</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Dashboard Internet of Things</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@3.4.1/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.5.0/css/font-awesome.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.3.0/Chart.bundle.js"></script>
     <style>
-        :root { --bg:#f3f6fb; --card:#fff; --line:#dbe4f0; --ink:#0f172a; --muted:#64748b; --green:#0f766e; --blue:#2563eb; --red:#dc2626; }
-        body { margin:0; font-family: Arial, sans-serif; background: var(--bg); color: var(--ink); }
-        .wrap { max-width: 1400px; margin: 0 auto; padding: 24px; }
-        .top { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom: 18px; }
-        .brand h1 { margin:0; font-size: 28px; }
-        .brand p { margin:6px 0 0; color: var(--muted); }
-        .logout button { border:0; background:#ef4444; color:#fff; padding:10px 16px; border-radius:10px; cursor:pointer; }
-        .hero { background: linear-gradient(135deg, #0f172a, #1d4ed8); color: #fff; border-radius: 22px; padding: 22px; margin-bottom: 18px; }
-        .hero h2 { margin:0 0 8px; font-size: 24px; }
-        .hero p { margin:0; opacity:.92; }
-        .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:16px; }
-        .card { background: var(--card); border:1px solid var(--line); border-radius:18px; padding:18px; box-shadow: 0 10px 25px rgba(15,23,42,.05); }
-        .metric-title { color: var(--muted); font-size: 14px; }
-        .metric-value { font-size: 42px; font-weight: 800; margin-top: 8px; color: var(--green); }
-        .metric-meta { color: var(--muted); margin-top: 6px; min-height: 36px; }
-        .actions { margin-top: 14px; display:flex; gap:10px; flex-wrap:wrap; }
-        .btn-link { display:inline-block; text-decoration:none; background:#0f172a; color:#fff; padding:10px 14px; border-radius:10px; font-size: 14px; }
-        .btn-link.secondary { background:#2563eb; }
-        .section { margin-top: 22px; }
-        .section-title { margin: 0 0 12px; font-size: 20px; }
-        .charts { display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
-        .chart-card { background: var(--card); border:1px solid var(--line); border-radius:18px; padding:18px; box-shadow: 0 10px 25px rgba(15,23,42,.05); }
-        .chart-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; }
-        .chart-head h3 { margin:0; font-size: 18px; }
-        .jump { color: var(--blue); text-decoration:none; font-size: 14px; }
-        canvas { width:100% !important; height:320px !important; }
-        .detail-list { display:grid; gap:16px; }
-        .detail-box { background: var(--card); border:1px solid var(--line); border-radius:18px; padding:18px; box-shadow: 0 10px 25px rgba(15,23,42,.05); }
-        .detail-box h3 { margin:0 0 12px; }
-        table { width:100%; border-collapse: collapse; }
-        th, td { padding: 12px 14px; border-bottom:1px solid var(--line); text-align:left; }
-        th { background:#0f172a; color:#fff; }
-        .pill { display:inline-block; padding: 6px 10px; border-radius:999px; background:#e2e8f0; color:#0f172a; font-size:12px; }
-        @media (max-width: 768px){ .top { flex-direction:column; align-items:flex-start; } .hero h2 { font-size: 20px; } }
+        body { background:#fff; color:#393939; font-family: Arial, Helvetica, sans-serif; padding:20px; }
+        .navbar-lite { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; }
+        .header { line-height:28px; margin-bottom:16px; margin-top:18px; padding-bottom:4px; border-bottom:1px solid #CCC; }
+        .smaller { font-size:21px; }
+        .lighter { font-weight:lighter; }
+        .blue { color:#478fca!important; }
+        .green { color:#69aa46!important; }
+        .alert-success { background:#dff0d8; border-color:#d6e9c6; color:#3c763d; }
+        .alert-info { background:#d9edf7; border-color:#bce8f1; color:#31708f; }
+        .btn-success, .btn-success.focus, .btn-success:focus { background-color:#45bb32!important; border-color:#3ac324; }
+        .chart-box { margin-bottom:25px; min-height:440px; }
+        canvas { width:100%!important; height:260px!important; }
+        .table-wrap { overflow-x:auto; }
+        .detail-table th { background:#307ecc; color:white; text-align:center; }
+        .detail-table td { text-align:center; }
+        .top-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     </style>
 </head>
 <body>
-<div class="wrap">
-    <div class="top">
-        <div class="brand">
-            <h1>Monitoring PH Air</h1>
-            <p>Login sebagai <strong>{{ $username }}</strong> Â· data refresh tiap 1 detik</p>
+<div class="container-fluid">
+    <div class="navbar-lite">
+        <div>
+            <h3 class="header smaller lighter blue" style="margin-top:0;">Dashboard Internet of Things</h3>
+            <div class="alert alert-info">Informasi detail informasi project : {{ $payload['project']['nama_project'] ?? 'Monitoring PH Air' }}</div>
         </div>
-        <form method="POST" action="{{ route('logout') }}" class="logout">@csrf<button type="submit">Keluar</button></form>
+        <form method="POST" action="{{ route('logout') }}">@csrf<button class="btn btn-danger" type="submit">Keluar</button></form>
     </div>
 
-    <div class="hero">
-        <h2>Dashboard Internet of Things</h2>
-        <p>Grafik pH air, suhu air, dan kekeruhan air tampil realtime. Klik kartu atau tombol detail untuk lompat ke bagian detail sensor.</p>
-    </div>
-
-    <div class="grid" id="metricGrid">
-        @foreach (['phair' => ['label' => 'PH Air', 'color' => 'var(--blue)'], 'suhu' => ['label' => 'Suhu Air', 'color' => 'var(--red)'], 'kekeruhan' => ['label' => 'Kekeruhan Air', 'color' => 'var(--green)']] as $key => $cfg)
-            @php($item = $payload['latest'][$key] ?? ['nilai' => '-', 'waktu' => '-', 'satuan' => ''])
-            <div class="card">
-                <div class="metric-title">{{ $cfg['label'] }}</div>
-                <div class="metric-value" style="color: {{ $cfg['color'] }}" id="metric-{{ $key }}">{{ $item['nilai'] }}</div>
-                <div class="metric-meta" id="meta-{{ $key }}">{{ $item['waktu'] }} {{ $item['satuan'] ? 'Â· '.$item['satuan'] : '' }}</div>
-                <div class="actions">
-                    <a href="#detail-{{ $key }}" class="btn-link secondary">Lihat detail</a>
-                    <a href="#chart-{{ $key }}" class="btn-link">Ke grafik</a>
+    <div class="row">
+        @foreach (['phair' => 'PH Air', 'suhu' => 'Suhu Air', 'kekeruhan' => 'Kekeruhan Air'] as $key => $sensorTitle)
+            @php($latest = $payload['latest'][$key] ?? ['nilai' => '-', 'waktu' => '-', 'satuan' => ''])
+            <div class="col-sm-4 chart-box">
+                <h3 class="header smaller lighter green"># {{ $sensorTitle }}</h3>
+                <canvas id="myChart{{ $key }}" width="100%" height="50"></canvas>
+                <div class="alert alert-success">
+                    <strong>
+                        <i class="ace-icon fa fa-refresh"></i>
+                        {{ $sensorTitle }} <br>Realtime [ <span id="waktu-{{ $key }}">{{ $latest['waktu'] }}</span> ] :
+                        <b><span id="nilai-{{ $key }}">{{ $latest['nilai'] }}</span> <span id="satuan-{{ $key }}">{{ $latest['satuan'] }}</span></b>
+                    </strong>
+                    <br>
+                </div>
+                <div class="top-actions">
+                    Lihat Tabel : <a class="btn btn-primary btn-xs" href="{{ route('monitoring.detail', $key) }}">Lihat detail tabel {{ $sensorTitle }}</a>
                 </div>
             </div>
         @endforeach
     </div>
-
-    <div class="section">
-        <h2 class="section-title">Grafik Live</h2>
-        <div class="charts">
-            @foreach (['phair' => ['label' => 'PH Air'], 'suhu' => ['label' => 'Suhu Air'], 'kekeruhan' => ['label' => 'Kekeruhan Air']] as $key => $cfg)
-                <div class="chart-card" id="chart-{{ $key }}">
-                    <div class="chart-head">
-                        <h3>{{ $cfg['label'] }}</h3>
-                        <a href="#detail-{{ $key }}" class="jump">Buka detail</a>
-                    </div>
-                    <canvas id="canvas-{{ $key }}"></canvas>
-                </div>
-            @endforeach
-        </div>
-    </div>
-
-    <div class="section">
-        <h2 class="section-title">Detail Sensor Realtime</h2>
-        <div class="detail-list">
-            @foreach (['phair' => 'PH Air', 'suhu' => 'Suhu Air', 'kekeruhan' => 'Kekeruhan Air'] as $key => $sensorLabel)
-                <div class="detail-box" id="detail-{{ $key }}">
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
-                        <h3 style="margin:0;">{{ $sensorLabel }}</h3>
-                        <span class="pill" id="pill-{{ $key }}">{{ ($payload['latest'][$key]['nilai'] ?? '-') }} {{ $payload['latest'][$key]['satuan'] ?? '' }}</span>
-                    </div>
-                    <div style="overflow-x:auto;">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Waktu</th>
-                                    <th>Nilai</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-{{ $key }}">
-                                @php($series = $payload['series'][$key] ?? ['labels' => [], 'values' => []])
-                                @foreach (collect($series['labels'])->slice(-10) as $idx => $labelTime)
-                                    <tr>
-                                        <td>{{ $labelTime }}</td>
-                                        <td>{{ $series['values'][$idx] ?? '-' }}</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            @endforeach
-        </div>
-    </div>
 </div>
 
 <script>
-const initialPayload = @json($payload);
-const chartConfigs = {
-    phair: { label: 'PH Air', color: 'rgba(37, 99, 235, 1)' },
-    suhu: { label: 'Suhu Air', color: 'rgba(220, 38, 38, 1)' },
-    kekeruhan: { label: 'Kekeruhan Air', color: 'rgba(16, 185, 129, 1)' },
+var initialPayload = @json($payload);
+var sensorLabels = { phair: 'PH Air', suhu: 'Suhu Air', kekeruhan: 'Kekeruhan Air' };
+var chartColors = {
+    phair: 'rgba(23, 99, 132, 0.2)',
+    suhu: 'rgba(220, 38, 38, 0.2)',
+    kekeruhan: 'rgba(16, 185, 129, 0.2)'
 };
-const charts = {};
+var borderColors = {
+    phair: 'rgba(23, 99, 132, 1)',
+    suhu: 'rgba(220, 38, 38, 1)',
+    kekeruhan: 'rgba(16, 185, 129, 1)'
+};
+var charts = {};
 
-function buildChart(key) {
-    const ctx = document.getElementById(`canvas-${key}`);
-    const series = initialPayload.series?.[key] || { labels: [], values: [] };
+function makeChart(key) {
+    var ctx = document.getElementById('myChart' + key);
+    var series = initialPayload.series[key] || { labels: [], values: [] };
     charts[key] = new Chart(ctx, {
         type: 'line',
         data: {
             labels: series.labels || [],
             datasets: [{
-                label: chartConfigs[key].label,
+                label: '# Grafik ' + sensorLabels[key],
                 data: series.values || [],
-                borderColor: chartConfigs[key].color,
-                backgroundColor: chartConfigs[key].color.replace('1)', '0.15)'),
-                tension: 0.25,
-                fill: true,
-                pointRadius: 2,
+                backgroundColor: [chartColors[key]],
+                borderColor: [borderColors[key]],
+                borderWidth: 1,
+                fill: true
             }]
         },
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
             animation: false,
-            plugins: { legend: { display: true } },
-            scales: { y: { beginAtZero: false } }
+            scales: {
+                yAxes: [{ ticks: { beginAtZero: true } }]
+            }
         }
     });
 }
 
-function renderRows(key, series) {
-    const body = document.getElementById(`table-${key}`);
-    if (!body) return;
-    const labels = series.labels || [];
-    const values = series.values || [];
-    const start = Math.max(labels.length - 10, 0);
-    const rows = labels.slice(start).map((label, index) => {
-        const realIndex = start + index;
-        return `<tr><td>${label}</td><td>${values[realIndex] ?? '-'}</td></tr>`;
-    }).join('');
-    body.innerHTML = rows || '<tr><td colspan="2">Belum ada data</td></tr>';
-}
-
-function updateMetric(key, item) {
-    document.getElementById(`metric-${key}`).textContent = item?.nilai ?? '-';
-    const waktu = item?.waktu ?? '-';
-    const satuan = item?.satuan ? ` Â· ${item.satuan}` : '';
-    document.getElementById(`meta-${key}`).textContent = `${waktu}${satuan}`;
-    const pill = document.getElementById(`pill-${key}`);
-    if (pill) pill.textContent = `${item?.nilai ?? '-'}${item?.satuan ? ' ' + item.satuan : ''}`;
-}
-
-function updateChart(key, series) {
-    if (!charts[key]) return;
-    charts[key].data.labels = series.labels || [];
-    charts[key].data.datasets[0].data = series.values || [];
-    charts[key].update('none');
-    renderRows(key, series);
-}
-
-async function refreshData() {
-    try {
-        const response = await fetch('{{ route('monitoring.api') }}', { headers: { 'Accept': 'application/json' } });
-        if (!response.ok) return;
-        const payload = await response.json();
-        ['phair', 'suhu', 'kekeruhan'].forEach((key) => {
-            updateMetric(key, payload.latest?.[key]);
-            updateChart(key, payload.series?.[key] || { labels: [], values: [] });
+function refreshDashboard() {
+    fetch('{{ route('monitoring.api') }}', { headers: { 'Accept': 'application/json' } })
+        .then(function(response) { return response.json(); })
+        .then(function(payload) {
+            ['phair', 'suhu', 'kekeruhan'].forEach(function(key) {
+                var latest = payload.latest[key] || { nilai: '-', waktu: '-', satuan: '' };
+                document.getElementById('nilai-' + key).textContent = latest.nilai || '-';
+                document.getElementById('waktu-' + key).textContent = latest.waktu || '-';
+                document.getElementById('satuan-' + key).textContent = latest.satuan || '';
+                if (charts[key]) {
+                    charts[key].data.labels = (payload.series[key] || {}).labels || [];
+                    charts[key].data.datasets[0].data = (payload.series[key] || {}).values || [];
+                    charts[key].update();
+                }
+            });
         });
-    } catch (error) {
-        console.error(error);
-    }
 }
 
-['phair', 'suhu', 'kekeruhan'].forEach(buildChart);
-refreshData();
-setInterval(refreshData, 1000);
+['phair', 'suhu', 'kekeruhan'].forEach(makeChart);
+setInterval(refreshDashboard, 1000);
 </script>
 </body>
 </html>
-
