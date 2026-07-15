@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -178,7 +179,7 @@ class MonitoringController extends Controller
                 ->reverse()
                 ->values();
 
-            $labels = $rows->map(fn ($row) => $row->waktu)->values()->all();
+            $labels = $rows->map(fn ($row) => $this->formatReadableDateTime($row->waktu))->values()->all();
             $values = $rows->map(fn ($row) => is_numeric($row->nilai) ? (float) $row->nilai : $row->nilai)->values()->all();
             $current = DB::table('data_input')
                 ->where('id_sensor_project', $sensor->id_sensor_project)
@@ -189,7 +190,7 @@ class MonitoringController extends Controller
                 'nama_sensor' => $sensor->nama_sensor,
                 'satuan' => $sensor->satuan,
                 'nilai' => $current?->nilai ?? '-',
-                'waktu' => $current?->waktu ?? '-',
+                'waktu' => $this->formatReadableDateTime($current?->waktu),
             ];
 
             $series[$sensor->prefix] = [
@@ -210,4 +211,39 @@ class MonitoringController extends Controller
             'series' => $series,
         ];
     }
+
+    private function formatReadableDateTime(?string $dateTime): string
+    {
+        if (blank($dateTime)) {
+            return '-';
+        }
+
+        $date = Carbon::parse($dateTime);
+        $days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+        $months = [
+            1 => 'Januari',
+            2 => 'Februari',
+            3 => 'Maret',
+            4 => 'April',
+            5 => 'Mei',
+            6 => 'Juni',
+            7 => 'Juli',
+            8 => 'Agustus',
+            9 => 'September',
+            10 => 'Oktober',
+            11 => 'November',
+            12 => 'Desember',
+        ];
+
+        return sprintf(
+            '%s, %02d %s %s jam %s:%s',
+            $days[$date->dayOfWeek],
+            $date->day,
+            $months[$date->month],
+            $date->year,
+            $date->format('H'),
+            $date->format('i')
+        );
+    }
+
 }
