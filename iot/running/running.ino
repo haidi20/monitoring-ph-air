@@ -104,8 +104,8 @@ bool useQuadratic = false;
   server_url adalah endpoint Laravel untuk menerima data sensor.
   apikey dipakai server untuk mengenali project yang aktif.
 */
-const char* ssid = "wifi-iot";
-const char* password = "password-iot";
+const char* ssid = "Proo";
+const char* password = "samarinda";
 const char* server_url = "http://43.156.137.225/server.php?apikey=";
 const char* apikey = "e2907e0d85c49fcbff5ac006c696f6f9";
 
@@ -158,7 +158,7 @@ void wifiReconnect() {
   - ph        = angka pH air, contoh 7.44.
 
   Data dikirim lewat HTTP GET dengan format URL:
-  server.php?apikey=...&suhu=...&kekeruhan=...&phair=...
+  server.php dengan parameter apikey, suhu, kekeruhan, dan phair.
 */
 void kirimData(float suhu, float kekeruhan, float ph) {
   // Jika WiFi belum tersambung, data tidak dikirim agar tidak error.
@@ -196,47 +196,130 @@ void kirimData(float suhu, float kekeruhan, float ph) {
     2. CAL_V7 menghasilkan pH 6.86
     3. CAL_V9 menghasilkan pH 9.18
 
-  Kenapa perlu 3 titik?
+  perlu 3 titik:
   - Rumus kuadrat punya 3 variabel: a, b, c.
   - Untuk menemukan 3 variabel, dibutuhkan 3 data kalibrasi.
 
   Output method ini:
   - a_coef, b_coef, c_coef akan berisi angka hasil perhitungan.
   - useQuadratic menjadi true agar pembacaan pH memakai rumus kuadrat.
+
+  ADC adalah singkatan dari Analog to Digital Converter.
+
+  alur ph:
+  1. analogRead(pin_ph)
+   Membaca sensor pH sebagai angka ADC
+
+  2. analogRead(pin_ph) * (ADC_REF_V / ADC_MAX)
+    Mengubah ADC menjadi Volt
+
+  3. computeQuadraticFrom3Points()
+    Menghitung rumus kalibrasi pH dari 3 titik referensi
+
+  4. voltToPH_cal(volt_ph)
+    Mengubah Volt menjadi nilai pH memakai rumus kalibrasi
 */
 void computeQuadraticFrom3Points() {
   /*
-    Matrix A berukuran 3x4 dipakai untuk sistem persamaan linear.
-    Tiap baris bentuknya:
-    [V^2, V, 1, pH]
+    METHOD INI ADALAH PROSES RUMUS KALIBRASI pH 3 TITIK.
 
-    Contoh konsep:
-    a*V4^2 + b*V4 + c = 4.00
-    a*V7^2 + b*V7 + c = 6.86
-    a*V9^2 + b*V9 + c = 9.18
+    Tujuan utama:
+    - Mencari nilai koefisien a, b, dan c.
+    - Koefisien ini dipakai pada rumus kuadrat:
+
+      pH = a * V^2 + b * V + c
+
+    - Sensor pH membaca tegangan Volt, bukan langsung angka pH.
+    - Kita punya 3 data kalibrasi dari cairan buffer:
+      1. Tegangan CAL_V4 harus menghasilkan pH 4.00.
+      2. Tegangan CAL_V7 harus menghasilkan pH 6.86.
+      3. Tegangan CAL_V9 harus menghasilkan pH 9.18.
+    - Dari 3 data itu, program mencari rumus yang paling pas agar tegangan
+      sensor bisa dikonversi menjadi angka pH.
+
+    rumus kuadrat
+    - Rumus kuadrat punya 3 angka yang dicari: a, b, c.
+    - Karena kita punya 3 titik kalibrasi, maka 3 angka itu bisa dihitung.
+    - Rumus kuadrat biasanya lebih fleksibel daripada rumus garis lurus 2 titik.
+
+    Matrix A berukuran 3x4 dipakai untuk menyusun sistem persamaan linear.
+    Tiap baris bentuknya:
+
+      [V^2, V, 1, pH]
+
+    Contoh konsep persamaannya:
+
+      a*V4^2 + b*V4 + c = 4.00
+      a*V7^2 + b*V7 + c = 6.86
+      a*V9^2 + b*V9 + c = 9.18
+
+    Angka 1 pada kolom ketiga adalah pasangan untuk koefisien c,
+    karena c adalah konstanta yang tidak dikali tegangan.
   */
   double A[3][4];
+
+  /*
+    Array V menyimpan 3 tegangan hasil kalibrasi.
+    Urutannya harus sama dengan array P.
+
+    V[0] = CAL_V4, tegangan saat pH 4.00.
+    V[1] = CAL_V7, tegangan saat pH 6.86.
+    V[2] = CAL_V9, tegangan saat pH 9.18.
+  */
   double V[3] = { (double)CAL_V4, (double)CAL_V7, (double)CAL_V9 };
+
+  /*
+    Array P menyimpan nilai pH target dari masing-masing tegangan.
+    P[0] berpasangan dengan V[0], P[1] dengan V[1], dan P[2] dengan V[2].
+  */
   double P[3] = { 4.0, 6.86, 9.18 };
 
-  // Isi matrix dari 3 titik kalibrasi.
+  /*
+    Proses ini mengisi matrix A dari 3 titik kalibrasi.
+
+    Untuk setiap titik kalibrasi:
+    - Kolom 0 diisi V^2, karena rumus punya bagian a * V^2.
+    - Kolom 1 diisi V, karena rumus punya bagian b * V.
+    - Kolom 2 diisi 1, karena rumus punya konstanta c.
+    - Kolom 3 diisi pH target, yaitu hasil yang harus dicapai.
+  */
   for (int i=0;i<3;i++){
-    A[i][0] = V[i]*V[i]; // Kolom V^2.
-    A[i][1] = V[i];      // Kolom V.
-    A[i][2] = 1.0;       // Kolom konstanta c.
-    A[i][3] = P[i];      // Kolom hasil pH.
+    A[i][0] = V[i]*V[i]; // Kolom V^2 untuk mencari koefisien a.
+    A[i][1] = V[i];      // Kolom V untuk mencari koefisien b.
+    A[i][2] = 1.0;       // Kolom konstanta untuk mencari koefisien c.
+    A[i][3] = P[i];      // Kolom hasil pH target.
   }
 
   /*
-    Gaussian elimination adalah metode matematika untuk menyelesaikan persamaan.
-    Bagian ini mengubah matrix agar nilai a, b, c bisa dihitung.
+    Gaussian elimination adalah metode matematika untuk menyelesaikan
+    persamaan linear.
+
+    Tujuannya:
+    - Mengubah matrix menjadi bentuk segitiga atas.
+    - Setelah bentuknya segitiga, nilai a, b, c bisa dihitung dari bawah
+      menggunakan proses back substitution.
+
+    Gambaran sederhananya:
+    - Baris pertama dipakai untuk menghilangkan nilai di bawah kolom pertama.
+    - Baris kedua dipakai untuk menghilangkan nilai di bawah kolom kedua.
+    - Setelah itu persamaan menjadi lebih mudah diselesaikan.
   */
   for (int i=0;i<3;i++){
-    // Cari pivot terbesar supaya perhitungan lebih stabil.
+    /*
+      Pivot adalah angka utama pada kolom yang sedang diproses.
+
+      - Agar pembagian lebih stabil.
+      - Agar tidak mudah error jika angka pivot terlalu kecil.
+      - Ini membantu mengurangi kesalahan pembulatan angka desimal.
+    */
     int pivot = i;
     for (int r=i+1;r<3;r++) if (fabs(A[r][i]) > fabs(A[pivot][i])) pivot = r;
 
-    // Jika pivot terbaik bukan baris saat ini, tukar barisnya.
+    /*
+      Jika pivot terbesar ada di baris lain, barisnya ditukar.
+      Pertukaran baris tidak mengubah arti persamaan, hanya mengubah urutan
+      agar perhitungan lebih aman.
+    */
     if (pivot != i) {
       for (int c=0;c<4;c++) {
         double t = A[i][c];
@@ -245,12 +328,36 @@ void computeQuadraticFrom3Points() {
       }
     }
 
-    // Normalisasi baris pivot agar nilai utama menjadi 1.
+    /*
+      Normalisasi baris pivot.
+
+      Maksudnya:
+      - Nilai utama pada baris ini dibuat menjadi 1.
+      - Caranya seluruh angka pada baris dibagi dengan nilai pivot.
+
+      Alasan proses ini diperlukan:
+      - Supaya proses menghilangkan angka di baris bawah lebih mudah.
+    */
     double div = A[i][i];
-    if (fabs(div) < 1e-12) continue; // 1e-12 adalah angka sangat kecil untuk mencegah pembagian nol.
+
+    /*
+      1e-12 adalah angka yang sangat kecil.
+      Jika pembagi terlalu dekat dengan nol, pembagian bisa menghasilkan
+      error besar. Karena itu baris dilewati jika pembaginya terlalu kecil.
+    */
+    if (fabs(div) < 1e-12) continue;
     for (int c=i;c<4;c++) A[i][c] /= div;
 
-    // Hilangkan nilai pada baris di bawah pivot.
+    /*
+      Eliminasi baris di bawah pivot.
+
+      Tujuannya:
+      - Membuat nilai pada kolom yang sama di baris bawah menjadi 0.
+      - Ini yang membuat matrix berubah menjadi bentuk segitiga atas.
+
+      f adalah faktor pengurang. Baris bawah dikurangi dengan baris pivot
+      yang sudah dikalikan faktor tersebut.
+    */
     for (int r=i+1;r<3;r++){
       double f = A[r][i];
       for (int c=i;c<4;c++) A[r][c] -= f * A[i][c];
@@ -258,25 +365,60 @@ void computeQuadraticFrom3Points() {
   }
 
   /*
-    Back substitution menghitung nilai akhir a, b, dan c dari bawah ke atas.
-    x[0] = a, x[1] = b, x[2] = c.
+    Back substitution adalah proses menghitung nilai akhir dari bawah ke atas.
+
+    Alasan perhitungan dimulai dari bawah:
+    - Setelah Gaussian elimination, baris paling bawah biasanya hanya punya
+      satu variabel utama yang belum diketahui.
+    - Setelah variabel bawah ketemu, nilainya dipakai untuk menghitung
+      variabel di baris atasnya.
+
+    x[0] = a, yaitu koefisien untuk V^2.
+    x[1] = b, yaitu koefisien untuk V.
+    x[2] = c, yaitu konstanta.
   */
   double x[3];
   for (int i=2;i>=0;i--){
+    /*
+      s dimulai dari nilai pH target pada kolom terakhir.
+      Lalu dikurangi bagian variabel yang sudah diketahui dari proses bawah.
+    */
     double s = A[i][3];
     for (int c=i+1;c<3;c++) s -= A[i][c] * x[c];
+
+    /*
+      denom adalah angka pembagi untuk variabel yang sedang dicari.
+      Jika terlalu kecil, isi 0 agar tidak terjadi pembagian dengan nol.
+    */
     double denom = A[i][i];
     if (fabs(denom) < 1e-12) x[i] = 0;
     else x[i] = s / denom;
   }
 
-  // Simpan hasil koefisien agar bisa dipakai oleh voltToPH_cal().
+  /*
+    Simpan hasil akhir koefisien.
+
+    Setelah ini rumus:
+      pH = a_coef * V^2 + b_coef * V + c_coef
+
+    sudah bisa dipakai oleh method voltToPH_cal().
+  */
   a_coef = x[0];
   b_coef = x[1];
   c_coef = x[2];
+
+  /*
+    useQuadratic dibuat true karena koefisien kuadrat sudah dihitung.
+    Artinya pembacaan pH berikutnya akan memakai rumus kuadrat, bukan rumus
+    linear fallback.
+  */
   useQuadratic = true;
 
-  // Tampilkan koefisien di Serial Monitor untuk pengecekan kalibrasi.
+  /*
+    Tampilkan koefisien di Serial Monitor untuk pengecekan.
+    Angka ini berguna jika ingin melihat hasil rumus kalibrasi yang dibuat
+    dari 3 titik buffer pH.
+  */
   Serial.println("Computed quadratic coefficients:");
   Serial.printf("a=%.9f b=%.9f c=%.9f\n", a_coef, b_coef, c_coef);
 }
@@ -296,16 +438,37 @@ void computeQuadraticFrom3Points() {
   - pH < 7  berarti air cenderung asam.
   - pH = 7  berarti netral.
   - pH > 7  berarti air cenderung basa.
+
+
 */
 float voltToPH_cal(float V) {
   if (useQuadratic) {
-    // Gunakan rumus kuadrat dari 3 titik kalibrasi.
+    // RUMUS: Gunakan rumus kuadrat dari 3 titik kalibrasi pH.
+    // Rumusnya: pH = a * V^2 + b * V + c.
     double ph = a_coef*V*V + b_coef*V + c_coef;
     return (float)ph;
   } else {
     /*
       Fallback linear dipakai kalau koefisien kuadrat belum tersedia.
-      Rumus ini hanya memakai titik pH 4 dan pH 6.86.
+      Rumus ini hanya memakai 2 titik kalibrasi:
+      - Titik 1: tegangan CAL_V4 menghasilkan pH 4.00.
+      - Titik 2: tegangan CAL_V7 menghasilkan pH 6.86.
+
+      RUMUS: Kalibrasi linear / interpolasi garis lurus.
+      Bentuk umum rumus garis dari 2 titik adalah:
+
+      y = y1 + (x - x1) * (y2 - y1) / (x2 - x1)
+
+      Pada sensor pH:
+      - x  = V, yaitu tegangan sensor yang sedang dibaca.
+      - x1 = CAL_V4, yaitu tegangan saat larutan pH 4.00.
+      - y1 = 4.00, yaitu nilai pH pada titik pertama.
+      - x2 = CAL_V7, yaitu tegangan saat larutan pH 6.86.
+      - y2 = 6.86, yaitu nilai pH pada titik kedua.
+
+      Maka rumusnya menjadi:
+
+      pH = 4.00 + (V - CAL_V4) * (6.86 - 4.00) / (CAL_V7 - CAL_V4)
     */
     float ph = 4.0f + (V - CAL_V4) * (6.86f - 4.0f) / (CAL_V7 - CAL_V4);
     return ph;
@@ -334,8 +497,9 @@ void setup() {
   analogSetPinAttenuation(TURBIDITY_PIN, ADC_11db);
   analogSetPinAttenuation(pin_ph, ADC_11db);
 
-  // ADC_WIDTH_12Bit membuat analogRead menghasilkan angka 0 sampai 4095.
-  adc1_config_width(ADC_WIDTH_12Bit);
+  // RUMUS/SETTING: 12 bit membuat analogRead menghasilkan angka 0 sampai 4095.
+  // analogReadResolution(12) lebih cocok untuk Arduino IDE ESP32 core versi baru.
+  analogReadResolution(12);
 
   // Mulai sensor suhu DS18B20.
   sensors.begin();
@@ -343,7 +507,8 @@ void setup() {
   // Mulai koneksi WiFi.
   WiFi.begin(ssid, password);
 
-  // Hitung koefisien rumus pH dari 3 titik kalibrasi.
+  // RUMUS: Hitung koefisien a, b, c untuk rumus kalibrasi pH.
+  // Proses ini membuat ESP32 bisa mengubah tegangan sensor menjadi angka pH.
   computeQuadraticFrom3Points();
 
   // Tampilkan status awal pada LCD selama 1.2 detik.
@@ -380,7 +545,8 @@ void loop() {
   */
   int adc_turb = analogRead(TURBIDITY_PIN);
 
-  // Ubah nilai ADC kekeruhan menjadi tegangan Volt.
+  // RUMUS: Ubah nilai ADC kekeruhan menjadi tegangan Volt.
+  // Rumusnya: tegangan = nilai_adc * (3.3 / 4095).
   float volt_turb = adc_turb * (ADC_REF_V / ADC_MAX);
 
   /*
@@ -393,6 +559,8 @@ void loop() {
     - 50.00  = keruh sedang
     - 10.00  = sangat keruh/kotor
   */
+  // RUMUS: Kalibrasi kekeruhan dari tegangan menjadi persen.
+  // Rumusnya: persen = (tegangan_sensor - tegangan_air_kotor) / (tegangan_air_jernih - tegangan_air_kotor) * 100.
   float percent = (volt_turb - V_DIRTY) / (V_CLEAR - V_DIRTY) * 100.0;
 
   // Batasi hasil agar tidak kurang dari 0 dan tidak lebih dari 100.
