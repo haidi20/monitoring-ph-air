@@ -69,6 +69,14 @@ const float V_DIRTY = 0.762;
 int pin_ph = 32;
 
 /*
+  Deteksi sensor pH terhubung atau tidak (heuristik ADC).
+  Tegangan mentok ~0V atau ~maksimum selama 3 siklus = sensor lepas.
+*/
+int ph_aneh = 0;
+int ph_baik = 3;
+bool ph_terpasang = true;
+
+/*
   Nilai kalibrasi pH berikut adalah tegangan saat probe dicelupkan ke cairan buffer.
   Angka ini sangat penting karena menentukan akurasi hasil pH.
 
@@ -78,9 +86,9 @@ int pin_ph = 32;
 
   Jika probe atau modul pH diganti, angka kalibrasi ini sebaiknya diukur ulang.
 */
-float CAL_V4 = 3.300f;
-float CAL_V7 = 2.585f;
-float CAL_V9 = 2.150f;
+float CAL_V4 = 3.169f;
+float CAL_V7 = 2.632f;
+float CAL_V9 = 2.197f;
 
 /*
   Koefisien a, b, c dipakai untuk rumus kuadrat:
@@ -106,7 +114,7 @@ bool useQuadratic = false;
 */
 const char* ssid = "wifi-iot";
 const char* password = "password-iot";
-const char* server_url = "http://43.156.137.225/server.php?apikey=";
+const char* server_url = "https://skripsi.haidinata.my.id/server.php?apikey=";
 const char* apikey = "e2907e0d85c49fcbff5ac006c696f6f9";
 
 /*
@@ -368,6 +376,20 @@ void setup() {
   6. Update LCD tiap 700 ms.
   7. Kirim data ke server tiap 7000 ms atau 7 detik.
 */
+// ================= BACA TEGANGAN pH =================
+/*
+  Membaca ADC pin pH sebanyak 10 sampel lalu dirata-ratakan
+  agar stabil dan tidak salah deteksi karena noise sesaat.
+*/
+float bacaTeganganPH() {
+  long total_adc = 0;
+  for (int i = 0; i < 30; i++) {
+    total_adc += analogRead(pin_ph);
+    delay(2);
+  }
+  return (total_adc / 30.0) * (ADC_REF_V / ADC_MAX);
+}
+
 void loop() {
 
   // Pastikan WiFi tetap tersambung. Jika putus, coba konek ulang.
@@ -425,13 +447,22 @@ void loop() {
 
   // ===== pH AIR =====
   // Baca tegangan analog sensor pH lalu konversi dari ADC ke Volt.
-  float volt_ph = (analogRead(pin_ph) * (ADC_REF_V / ADC_MAX));
+  float volt_ph = bacaTeganganPH();
+
+  if (volt_ph < 0.05 || volt_ph > 3.15) {
+    ph_aneh++;
+    ph_baik = 0;
+  } else {
+    ph_aneh = 0;
+    if (ph_baik < 3) ph_baik++;
+  }
+  ph_terpasang = (ph_aneh == 0 && ph_baik >= 3);
 
   /*
     Ubah tegangan pH menjadi nilai pH memakai rumus kalibrasi.
     Hasil nilai_ph dikirim ke server sebagai field phair.
   */
-  float nilai_ph = voltToPH_cal(volt_ph);
+  float nilai_ph = ph_terpasang ? voltToPH_cal(volt_ph) : 0.0;
 
   // ===== SERIAL MONITOR =====
   /*
@@ -447,7 +478,11 @@ void loop() {
   Serial.println("============ DEBUG ============");
   Serial.printf("Turbidity: %.3fV | %.1f%% | %s\n", volt_turb, percent, kondisi.c_str());
   Serial.printf("Suhu: %.2f C\n", suhu);
-  Serial.printf("pHVolt: %.3f V | pH: %.2f\n", volt_ph, nilai_ph);
+  if (ph_terpasang) {
+    Serial.printf("pHVolt: %.3f V | pH: %.2f\n", volt_ph, nilai_ph);
+  } else {
+    Serial.printf("[!] Sensor pH TIDAK TERDETEKSI (volt %.3f)\n", volt_ph);
+  }
   Serial.println("================================\n");
 
   // ===== LCD SETIAP 700 ms =====
@@ -460,7 +495,11 @@ void loop() {
 
     // Baris pertama LCD: suhu dan pH.
     lcd.setCursor(0, 0);
-    lcd.printf("S:%.1fC pH:%.2f", suhu, nilai_ph);
+    if (ph_terpasang) {
+      lcd.printf("S:%.1fC pH:%.2f", suhu, nilai_ph);
+    } else {
+      lcd.printf("S:%.1fC pH:--", suhu);
+    }
 
     // Baris kedua LCD: persen kejernihan/kekeruhan dan label kondisi.
     lcd.setCursor(0, 1);
