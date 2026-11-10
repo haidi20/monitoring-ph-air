@@ -23,3 +23,5 @@ yarn-error.log
 /.zed
 composer.phar
 package-lock.json
+/iot/build/
+/iot/running/build/
