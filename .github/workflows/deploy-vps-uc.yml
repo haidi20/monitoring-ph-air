@@ -1,0 +1,41 @@
+name: Deploy VPS UC
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vps-uc-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Production
+    runs-on: [self-hosted, klinik-vps]
+    env:
+      APP_DIR: /var/www/monitoring-ph-air
+      BRANCH: main
+      DB_NAME: monitoring_ph_air
+      DB_USER: monitoring
+      APP_HOST: skripsi.haidinata.my.id
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Provision or update application
+        run: |
+          if sudo test -d "${APP_DIR}/.git"; then
+            sudo env APP_DIR="${APP_DIR}" BRANCH="${BRANCH}" \
+              bash "${GITHUB_WORKSPACE}/deploy/deploy-update.sh"
+          else
+            sudo env APP_DIR="${APP_DIR}" BRANCH="${BRANCH}" \
+              DB_NAME="${DB_NAME}" DB_USER="${DB_USER}" \
+              APP_URL="${APP_HOST}" REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+              bash "${GITHUB_WORKSPACE}/deploy/setup-vps.sh"
+          fi
+
+      - name: Health check
+        run: |
+          HTTP_CODE=$(curl -sS -o /tmp/monitoring-health.html -w "%{http_code}" http://127.0.0.1/up || true)
+          echo "Health check HTTP ${HTTP_CODE}"
+          test "${HTTP_CODE}" = "200"
