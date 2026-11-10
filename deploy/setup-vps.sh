@@ -27,14 +27,20 @@ info "1/10 Install paket sistem"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq ca-certificates curl git unzip software-properties-common gnupg
-add-apt-repository -y ppa:ondrej/php
-apt-get update -qq
-apt-get install -y -qq \
-  "php${PHP_VERSION}-fpm" "php${PHP_VERSION}-cli" "php${PHP_VERSION}-mysql" \
-  "php${PHP_VERSION}-mbstring" "php${PHP_VERSION}-xml" "php${PHP_VERSION}-curl" \
-  "php${PHP_VERSION}-zip" "php${PHP_VERSION}-gd" "php${PHP_VERSION}-intl" \
-  "php${PHP_VERSION}-bcmath" "php${PHP_VERSION}-opcache" "php${PHP_VERSION}-redis" \
-  mysql-server redis-server nginx
+
+php_major_minor="$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' 2>/dev/null || true)"
+if [[ "${php_major_minor}" != "${PHP_VERSION}" ]]; then
+    if ! grep -Rqs 'ondrej/php' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null; then
+        add-apt-repository -y ppa:ondrej/php
+    fi
+    apt-get update -qq
+    apt-get install -y -qq \
+      "php${PHP_VERSION}-fpm" "php${PHP_VERSION}-cli" "php${PHP_VERSION}-mysql" \
+      "php${PHP_VERSION}-mbstring" "php${PHP_VERSION}-xml" "php${PHP_VERSION}-curl" \
+      "php${PHP_VERSION}-zip" "php${PHP_VERSION}-gd" "php${PHP_VERSION}-intl" \
+      "php${PHP_VERSION}-bcmath" "php${PHP_VERSION}-opcache" "php${PHP_VERSION}-redis"
+fi
+apt-get install -y -qq mysql-server redis-server nginx
 systemctl enable --now mysql redis-server nginx
 
 info "2/10 Install Composer dan Node.js"
