@@ -5,11 +5,19 @@ namespace App\Http\Controllers;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class MonitoringController extends Controller
 {
-    private string $defaultApiKey = 'e2907e0d85c49fcbff5ac006c696f6f9';
-
+    /**
+     * Menerima data sensor dari perangkat IoT (ESP32).
+     *
+     * Alur: validasi apikey -> cari project aktif -> simpan setiap nilai
+     * sensor yang dikirim ke tabel data_input -> picu alert Telegram bila
+     * nilai di luar ambang batas. Selalu membalas JSON out_1..out_10 '0'
+     * sebagai format respons yang diharapkan firmware.
+     */
     public function ingest(Request $request)
     {
         $apikey = $request->input('apikey');
@@ -37,13 +45,17 @@ class MonitoringController extends Controller
                 continue;
             }
 
+            $nilai = (string) $request->input($sensor->prefix);
+
             DB::table('data_input')->insert([
                 'id_input' => 'INP'.now()->format('YmdHisv').random_int(100, 999),
                 'id_project' => $project->id_project,
                 'id_sensor_project' => $sensor->id_sensor_project,
                 'waktu' => now()->format('Y-m-d H:i:s'),
-                'nilai' => (string) $request->input($sensor->prefix),
+                'nilai' => $nilai,
             ]);
+
+            $this->dispatchThresholdAlert($sensor, $nilai);
         }
 
         return response()->json([
@@ -60,6 +72,12 @@ class MonitoringController extends Controller
         ]);
     }
 
+    /**
+     * Menampilkan halaman dashboard utama.
+     *
+     * Wajib login (session monitoring_user). Menyiapkan payload berisi
+     * nilai terakhir dan deret riwayat semua sensor untuk dirender view.
+     */
     public function dashboard()
     {
         if (! session()->has('monitoring_user')) {
@@ -75,6 +93,11 @@ class MonitoringController extends Controller
         ]);
     }
 
+    /**
+     * Menampilkan form login.
+     *
+     * Jika pengguna sudah login, langsung dialihkan ke dashboard.
+     */
     public function loginForm()
     {
         if (session()->has('monitoring_user')) {
@@ -84,6 +107,13 @@ class MonitoringController extends Controller
         return view('login');
     }
 
+    /**
+     * Memproses percobaan login.
+     *
+     * Memvalidasi input, mencocokkan dengan kredensial dari config
+     * (env MONITORING_DASHBOARD_USERNAME/PASSWORD). Berhasil: regenerasi
+     * session dan simpan penanda login. Gagal: kembali dengan error.
+     */
     public function login(Request $request)
     {
         $credentials = $request->validate([
@@ -91,7 +121,8 @@ class MonitoringController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        if ($credentials['username'] === 'user' && $credentials['password'] === 'user') {
+        if ($credentials['username'] === config('monitoring.dashboard.username')
+            && $credentials['password'] === config('monitoring.dashboard.password')) {
             $request->session()->regenerate();
             $request->session()->put('monitoring_user', $credentials['username']);
 
@@ -103,6 +134,12 @@ class MonitoringController extends Controller
         ])->onlyInput('username');
     }
 
+    /**
+     * Keluar dari dashboard.
+     *
+     * Menghapus penanda login, meng-invalidate session, dan regenerasi
+     * token CSRF untuk keamanan.
+     */
     public function logout(Request $request)
     {
         $request->session()->forget('monitoring_user');
@@ -112,6 +149,12 @@ class MonitoringController extends Controller
         return redirect()->route('login');
     }
 
+    /**
+     * Endpoint JSON data monitoring (/api/monitoring).
+     *
+     * Mengembalikan payload yang sama dengan dashboard (nilai terbaru +
+     * deret riwayat) dalam format JSON, tanpa perlu login.
+     */
     public function api()
     {
         $project = $this->resolveMonitoringProject();
@@ -123,6 +166,12 @@ class MonitoringController extends Controller
         return response()->json($this->buildMonitoringPayload($project));
     }
 
+    /**
+     * Menampilkan halaman detail per sensor (phair/suhu/kekeruhan).
+     *
+     * Wajib login. Prefix sensor divalidasi whitelist; selain itu 404.
+     * Payload sama dengan dashboard, view difokuskan ke satu sensor.
+     */
     public function detail(string $sensor)
     {
         if (! session()->has('monitoring_user')) {
@@ -143,27 +192,87 @@ class MonitoringController extends Controller
         ]);
     }
 
+    /**
+     * Mencari project monitoring aktif yang dipakai dashboard/API.
+     *
+     * Prioritas: project dengan apikey sesuai MONITORING_API_KEY.
+     * Fallback: project aktif dengan id_project terbaru.
+     */
     private function resolveMonitoringProject()
     {
         return DB::table('data_project')
             ->where('status', 'aktif')
-            ->where('apikey', $this->defaultApiKey)
+            ->where('apikey', config('monitoring.api_key'))
             ->first()
             ?? DB::table('data_project')->where('status', 'aktif')->orderByDesc('id_project')->first();
     }
 
+    /**
+     * Mengirim alert Telegram bila nilai sensor di luar ambang batas.
+     *
+     * Lewat (no-op) bila Telegram belum dikonfigurasi, threshold sensor
+     * tidak terdaftar, atau nilai bukan angka. Bila nilai di luar rentang
+     * min-max, kirim pesan ke chat; kegagalan kirim hanya dicatat di log.
+     */
+    private function dispatchThresholdAlert(object $sensor, string $nilai): void
+    {
+        $botToken = config('monitoring.telegram.bot_token');
+        $chatId = config('monitoring.telegram.chat_id');
+        $threshold = config("monitoring.thresholds.{$sensor->prefix}");
+
+        if (blank($botToken) || blank($chatId) || blank($threshold) || ! is_numeric($nilai)) {
+            return;
+        }
+
+        $value = (float) $nilai;
+
+        if ($value >= $threshold['min'] && $value <= $threshold['max']) {
+            return;
+        }
+
+        $response = Http::asForm()->post("https://api.telegram.org/bot{$botToken}/sendMessage", [
+            'chat_id' => $chatId,
+            'text' => sprintf(
+                '[Alert] %s: %s %s di luar ambang batas (%s - %s)',
+                $sensor->nama_sensor,
+                $nilai,
+                $sensor->satuan,
+                $threshold['min'],
+                $threshold['max']
+            ),
+        ]);
+
+        if (! $response->successful()) {
+            Log::warning('Gagal mengirim alert Telegram.', ['response' => $response->json()]);
+        }
+    }
+
+    /**
+     * Mengambil daftar sensor aktif milik sebuah project.
+     *
+     * Hanya prefix phair, suhu, kekeruhan. Hasil diurutkan sesuai urutan
+     * prefix tersebut (bukan urutan database) agar tampilan konsisten.
+     */
     private function resolveMonitoringSensors(string $projectId)
     {
-        return DB::table('data_sensor_project as sp')
+        $sensors = DB::table('data_sensor_project as sp')
             ->join('data_sensor as s', 's.id_sensor', '=', 'sp.id_sensor')
             ->where('sp.id_project', $projectId)
             ->where('sp.status', 'aktif')
             ->whereIn('sp.prefix', ['phair', 'suhu', 'kekeruhan'])
             ->select('sp.id_sensor_project', 'sp.prefix', 's.nama_sensor', 's.satuan')
-            ->orderByRaw("FIELD(sp.prefix, 'phair', 'suhu', 'kekeruhan')")
             ->get();
+
+        return $sensors->sortBy(fn ($sensor) => array_search($sensor->prefix, ['phair', 'suhu', 'kekeruhan'], true))->values();
     }
 
+    /**
+     * Menyusun payload lengkap untuk dashboard/detail/API.
+     *
+     * Untuk setiap sensor: ambil 50 data terakhir (dibalik menjadi urutan
+     * waktu naik) sebagai deret grafik, plus satu nilai terbaru sebagai
+     * kondisi saat ini. Hasilnya struktur project + latest + series.
+     */
     private function buildMonitoringPayload(object $project): array
     {
         $sensors = $this->resolveMonitoringSensors($project->id_project);
@@ -212,6 +321,11 @@ class MonitoringController extends Controller
         ];
     }
 
+    /**
+     * Memformat tanggal-waktu ke teks Indonesia yang mudah dibaca.
+     *
+     * Contoh: "Senin, 03 Maret 2026 jam 14:05". Nilai kosong -> '-'.
+     */
     private function formatReadableDateTime(?string $dateTime): string
     {
         if (blank($dateTime)) {
@@ -245,5 +359,4 @@ class MonitoringController extends Controller
             $date->format('i')
         );
     }
-
 }
