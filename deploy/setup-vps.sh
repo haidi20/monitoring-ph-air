@@ -8,7 +8,7 @@ DB_NAME="${DB_NAME:-monitoring_ph_air}"
 DB_USER="${DB_USER:-monitoring}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 REPO_URL="${REPO_URL:-https://github.com/haidi20/monitoring-ph-air.git}"
-APP_URL="${APP_URL:-skripsi.haidinata.my.id}"
+APP_URL="${APP_URL:-skripsi.43.156.137.225.nip.io}"
 FORCE_IMPORT_SQL="${FORCE_IMPORT_SQL:-false}"
 
 info() { printf '\033[1;34m[INFO]\033[0m %s\n' "$*"; }
