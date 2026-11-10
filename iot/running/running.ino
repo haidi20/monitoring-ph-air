@@ -4,6 +4,7 @@
 #include <DallasTemperature.h> // Library pembacaan suhu dari DS18B20 dalam Celcius.
 #include <WiFi.h>              // Library koneksi WiFi ESP32.
 #include <HTTPClient.h>        // Library untuk mengirim data ke server lewat HTTP GET.
+#include <ArduinoOTA.h>        // Library update firmware lewat WiFi (tanpa kabel USB).
 #include <driver/adc.h>        // Library konfigurasi ADC ESP32, dipakai untuk input analog.
 
 /*
@@ -117,6 +118,14 @@ const char* apikey = "e2907e0d85c49fcbff5ac006c696f6f9";
 unsigned long lastSend = 0;
 unsigned long lastLCD = 0;
 
+/*
+  Konfigurasi OTA (Over-The-Air).
+  Password OTA dipakai Mac untuk mengirim firmware baru lewat WiFi,
+  baudrate OTA tidak berlaku sama seperti Serial Monitor.
+*/
+const char* ota_hostname = "monitoring-ph-air";
+const char* ota_password = "esp32air";
+
 // ================= WIFI CONNECT ===================
 /*
   Method wifiReconnect()
@@ -144,6 +153,46 @@ void wifiReconnect() {
 
   // Jika berhasil terkoneksi, tampilkan informasi di Serial Monitor.
   if (WiFi.status() == WL_CONNECTED) Serial.println("WiFi Reconnected!");
+}
+
+// ================= OTA SETUP ===================
+/*
+  Method setupOTA()
+  Tujuan:
+  - Mengaktifkan OTA agar firmware bisa diperbarui lewat WiFi.
+  - IP dan hostname akan tampil di Serial Monitor saat siap.
+*/
+void setupOTA() {
+  ArduinoOTA.setHostname(ota_hostname);
+  ArduinoOTA.setPassword(ota_password);
+
+  ArduinoOTA.onStart([]() {
+    Serial.println("OTA Mulai: update firmware");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Update OTA...");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nOTA Selesai. Restarting...");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("OTA Done");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("OTA Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("OTA Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    else if (error == OTA_END_ERROR) Serial.println("End Failed");
+  });
+
+  ArduinoOTA.begin();
+  Serial.println("OTA siap. Hostname: " + String(ota_hostname));
+  Serial.println("IP address: " + WiFi.localIP().toString());
 }
 
 // ================= SEND SERVER ===================
@@ -507,6 +556,13 @@ void setup() {
   // Mulai koneksi WiFi.
   WiFi.begin(ssid, password);
 
+  // Tunggu koneksi WiFi awal maksimal 5 detik supaya OTA langsung siap.
+  unsigned long startWifi = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startWifi < 5000) delay(200);
+
+  // Aktifkan OTA setelah WiFi tersambung.
+  setupOTA();
+
   // RUMUS: Hitung koefisien a, b, c untuk rumus kalibrasi pH.
   // Proses ini membuat ESP32 bisa mengubah tegangan sensor menjadi angka pH.
   computeQuadraticFrom3Points();
@@ -534,6 +590,9 @@ void setup() {
   7. Kirim data ke server tiap 7000 ms atau 7 detik.
 */
 void loop() {
+
+  // Panggil handler OTA agar perangkat bisa menerima firmware baru via WiFi.
+  ArduinoOTA.handle();
 
   // Pastikan WiFi tetap tersambung. Jika putus, coba konek ulang.
   wifiReconnect();
