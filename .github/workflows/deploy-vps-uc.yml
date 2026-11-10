@@ -18,7 +18,7 @@ jobs:
       BRANCH: main
       DB_NAME: monitoring_ph_air
       DB_USER: monitoring
-      APP_HOST: skripsi.43.156.137.225.nip.io
+      APP_HOST: skripsi.haidinata.my.id
     steps:
       - uses: actions/checkout@v4
 
