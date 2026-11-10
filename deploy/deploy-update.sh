@@ -36,6 +36,6 @@ php artisan route:cache
 php artisan view:cache
 
 info "5/5 Health check"
-HTTP_CODE=$(curl -sS -o /tmp/monitoring-health.html -w "%{http_code}" http://127.0.0.1/up || true)
+HTTP_CODE=$(curl -sS -o /tmp/monitoring-health.html -w "%{http_code}" http://127.0.0.1/ || true)
 [[ "${HTTP_CODE}" == "200" ]] || die "Health check /up mengembalikan HTTP ${HTTP_CODE}."
 info "Deploy selesai."

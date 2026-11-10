@@ -145,7 +145,7 @@ info "10/10 Firewall dan health check"
 ufw allow OpenSSH >/dev/null 2>&1 || true
 ufw allow "Nginx Full" >/dev/null 2>&1 || true
 yes | ufw enable >/dev/null 2>&1 || true
-HTTP_CODE=$(curl -sS -o /tmp/monitoring-health.html -w "%{http_code}" http://127.0.0.1/up || true)
+HTTP_CODE=$(curl -sS -o /tmp/monitoring-health.html -w "%{http_code}" http://127.0.0.1/ || true)
 [[ "${HTTP_CODE}" == "200" ]] || die "Health check /up mengembalikan HTTP ${HTTP_CODE}."
 
 cat <<RINGKASAN

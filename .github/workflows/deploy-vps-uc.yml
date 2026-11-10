@@ -36,6 +36,6 @@ jobs:
 
       - name: Health check
         run: |
-          HTTP_CODE=$(curl -sS -o /tmp/monitoring-health.html -w "%{http_code}" http://127.0.0.1/up || true)
+          HTTP_CODE=$(curl -sS -o /tmp/monitoring-health.html -w "%{http_code}" http://127.0.0.1/ || true)
           echo "Health check HTTP ${HTTP_CODE}"
           test "${HTTP_CODE}" = "200"
