@@ -4,8 +4,11 @@
 #include <DallasTemperature.h> // Library pembacaan suhu dari DS18B20 dalam Celcius.
 #include <WiFi.h>              // Library koneksi WiFi ESP32.
 #include <HTTPClient.h>        // Library untuk mengirim data ke server lewat HTTP GET.
+#include <WiFiClientSecure.h>  // Klien TLS untuk endpoint HTTPS.
 #include <ArduinoOTA.h>        // Library update firmware lewat WiFi (tanpa kabel USB).
 #include <driver/adc.h>        // Library konfigurasi ADC ESP32, dipakai untuk input analog.
+#include "ph_validation.h"     // Validasi nilai pH untuk LCD dan payload server.
+#include "tls_cert.h"          // Root CA ISRG Root X1 untuk verifikasi TLS.
 
 /*
   LCD memakai alamat I2C 0x27 dengan ukuran 16 kolom dan 2 baris.
@@ -233,20 +236,27 @@ void setupOTA() {
   Data dikirim lewat HTTP GET dengan format URL:
   server.php dengan parameter apikey, suhu, kekeruhan, dan phair.
 */
-void kirimData(float suhu, float kekeruhan, float ph) {
+void kirimData(float suhu, float kekeruhan, float ph, bool phValid) {
   // Jika WiFi belum tersambung, data tidak dikirim agar tidak error.
   if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
+  WiFiClientSecure client;
+  client.setCACert(kIsrgRootX1Pem);
+  client.setHandshakeTimeout(5);
 
   // Gabungkan alamat server, apikey, dan nilai sensor menjadi satu URL.
   String url = String(server_url) + apikey +
                "&suhu=" + suhu +
-               "&kekeruhan=" + kekeruhan +
-               "&phair=" + ph;
+               "&kekeruhan=" + kekeruhan;
+
+  // Sensor pH tidak celup / nilai tidak valid: jangan kirim angka pH ke server.
+  if (phValid) url += "&phair=" + String(ph, 2);
 
   // Mulai request HTTP ke URL yang sudah dibuat.
-  http.begin(url);
+  http.setConnectTimeout(5000);
+  http.setTimeout(5000);
+  http.begin(client, url);
 
   // Jalankan request GET dan simpan kode balasan server.
   // HTTP_CODE_OK bernilai 200, artinya server menerima request dengan sukses.
@@ -716,6 +726,10 @@ void loop() {
   */
   float nilai_ph = ph_terpasang ? voltToPH_cal(volt_ph) : 0.0;
 
+  // Sensor pH tidak celup air / pembacaan tidak valid: angka di luar 0-14
+  // dianggap tidak layak ditampilkan dan tidak boleh dikirim ke server.
+  bool ph_valid = ph_terpasang && isPhValueValid(nilai_ph);
+
   // ===== SERIAL MONITOR =====
   /*
     Bagian ini membantu debugging saat ESP32 disambungkan ke komputer.
@@ -728,12 +742,13 @@ void loop() {
     - nilai_ph  = hasil pH setelah kalibrasi.
   */
   Serial.println("============ DEBUG ============");
+  Serial.printf("WiFi status: %d\n", WiFi.status());
   Serial.printf("Turbidity: %.3fV | %.1f%% | %s\n", volt_turb, percent, kondisi.c_str());
   Serial.printf("Suhu: %.2f C\n", suhu);
-  if (ph_terpasang) {
+  if (ph_valid) {
     Serial.printf("pHVolt: %.3f V | pH: %.2f\n", volt_ph, nilai_ph);
   } else {
-    Serial.printf("[!] Sensor pH TIDAK TERDETEKSI (volt %.3f)\n", volt_ph);
+    Serial.println("[!] Sensor pH tidak celup / nilai tidak valid; tidak dikirim ke server.");
   }
   Serial.println("================================\n");
 
@@ -747,7 +762,7 @@ void loop() {
 
     // Baris pertama LCD: suhu dan pH.
     lcd.setCursor(0, 0);
-    if (ph_terpasang) {
+    if (ph_valid) {
       lcd.printf("S:%.1fC pH:%.2f", suhu, nilai_ph);
     } else {
       lcd.printf("S:%.1fC pH:--", suhu);
@@ -770,7 +785,7 @@ void loop() {
   */
   if (millis() - lastSend > 7000) {
     // Kirim suhu, percent kekeruhan, dan nilai pH ke server Laravel.
-    kirimData(suhu, percent, nilai_ph);
+    kirimData(suhu, percent, nilai_ph, ph_valid);
 
     // Simpan waktu kirim terakhir.
     lastSend = millis();

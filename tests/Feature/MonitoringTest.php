@@ -67,6 +67,7 @@ class MonitoringTest extends TestCase
         $sensors = [
             ['id_sensor' => 'S1', 'nama_sensor' => 'PH Air', 'satuan' => 'pH', 'prefix' => 'phair', 'id_sensor_project' => 'SP1'],
             ['id_sensor' => 'S2', 'nama_sensor' => 'Suhu Air', 'satuan' => '°C', 'prefix' => 'suhu', 'id_sensor_project' => 'SP2'],
+            ['id_sensor' => 'S3', 'nama_sensor' => 'Kekeruhan Air', 'satuan' => '%', 'prefix' => 'kekeruhan', 'id_sensor_project' => 'SP3'],
         ];
 
         foreach ($sensors as $sensor) {
@@ -107,6 +108,30 @@ class MonitoringTest extends TestCase
 
         $response->assertOk()->assertSee('Gagal');
         $this->assertDatabaseCount('data_input', 0);
+    }
+
+    public function test_esp32_http_get_menyimpan_ketiga_data_sensor(): void
+    {
+        $response = $this->get('/server.php?apikey=test-api-key&suhu=27.50&kekeruhan=100.00&phair=7.44');
+
+        $response->assertOk()->assertJsonPath('out_1', '0');
+
+        $this->assertDatabaseCount('data_input', 3);
+        $this->assertDatabaseHas('data_input', ['id_sensor_project' => 'SP1', 'nilai' => '7.44']);
+        $this->assertDatabaseHas('data_input', ['id_sensor_project' => 'SP2', 'nilai' => '27.50']);
+        $this->assertDatabaseHas('data_input', ['id_sensor_project' => 'SP3', 'nilai' => '100.00']);
+    }
+
+    public function test_esp32_payload_tanpa_p_h_tidak_menyimpan_p_h(): void
+    {
+        $response = $this->get('/server.php?apikey=test-api-key&suhu=27.50&kekeruhan=100.00');
+
+        $response->assertOk()->assertJsonPath('out_1', '0');
+
+        $this->assertDatabaseCount('data_input', 2);
+        $this->assertDatabaseMissing('data_input', ['id_sensor_project' => 'SP1']);
+        $this->assertDatabaseHas('data_input', ['id_sensor_project' => 'SP2', 'nilai' => '27.50']);
+        $this->assertDatabaseHas('data_input', ['id_sensor_project' => 'SP3', 'nilai' => '100.00']);
     }
 
     public function test_dashboard_wajib_login(): void

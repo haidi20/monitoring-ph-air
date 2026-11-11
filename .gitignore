@@ -25,3 +25,4 @@ composer.phar
 package-lock.json
 /iot/build/
 /iot/running/build/
+*.obj
