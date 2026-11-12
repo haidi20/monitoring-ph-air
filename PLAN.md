@@ -12,5 +12,15 @@ dashboard tetap menampilkan seluruh hari (bukan cuma 4 menit terakhir).
 - [x] 5. Backend: agregasi grafik per menit untuk seluruh hari ini
 - [x] 6. Test: agregasi per menit + rentang hari
 - [x] 7. Jalankan `php artisan test` (13 passed, 44 assertions)
-- [ ] 8. Commit, push, deploy ke VPS UC
-- [ ] 9. Verifikasi produksi via `/api/monitoring`
+- [x] 8. Commit, push, deploy ke VPS UC
+- [x] 9. Verifikasi produksi via `/api/monitoring`
+
+## Hasil
+
+- Firmware `iot/running/running.ino` (dipakai `build.py`) dan salinan
+  `iot/main.cpp` sudah memakai `SEND_INTERVAL_MS = 3000`, jadwal tetap,
+  suhu non-blocking, dan reuse koneksi TLS.
+- API produksi memakai agregasi per menit: suhu/kekeruhan 68 bucket,
+  pH 6 bucket, payload 6,7 KB untuk satu hari penuh.
+- Firmware belum di-flash; perangkat terakhir kirim 11:23 WITA dan
+  sekarang offline, jadi kecepatan 3 detik baru berlaku setelah OTA/flash.
