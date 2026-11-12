@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -137,6 +138,51 @@ class MonitoringTest extends TestCase
     public function test_dashboard_wajib_login(): void
     {
         $this->get('/')->assertRedirect(route('login'));
+    }
+
+    public function test_dashboard_hanya_memakai_data_hari_ini(): void
+    {
+        DB::table('data_input')->insert([
+            [
+                'id_input' => 'INP20240101000000000001',
+                'id_project' => 'PRJ1',
+                'id_sensor_project' => 'SP1',
+                'waktu' => Carbon::parse('2024-01-01 10:00:00')->format('Y-m-d H:i:s'),
+                'nilai' => '4.20',
+            ],
+            [
+                'id_input' => 'INP'.Carbon::now()->format('YmdHis').'000001',
+                'id_project' => 'PRJ1',
+                'id_sensor_project' => 'SP1',
+                'waktu' => Carbon::now()->format('Y-m-d H:i:s'),
+                'nilai' => '7.20',
+            ],
+        ]);
+
+        $response = $this->getJson('/api/monitoring');
+
+        $response->assertOk()
+            ->assertJsonPath('latest.phair.nilai', '7.20')
+            ->assertJsonCount(1, 'series.phair.values')
+            ->assertJsonPath('series.phair.values.0', 7.2);
+    }
+
+    public function test_dashboard_kosong_bila_tidak_ada_data_hari_ini(): void
+    {
+        DB::table('data_input')->insert([
+            'id_input' => 'INP20240101000000000001',
+            'id_project' => 'PRJ1',
+            'id_sensor_project' => 'SP1',
+            'waktu' => Carbon::parse('2024-01-01 10:00:00')->format('Y-m-d H:i:s'),
+            'nilai' => '4.20',
+        ]);
+
+        $response = $this->getJson('/api/monitoring');
+
+        $response->assertOk()
+            ->assertJsonPath('latest.phair.nilai', '-')
+            ->assertJsonPath('latest.phair.waktu', '-')
+            ->assertJsonCount(0, 'series.phair.values');
     }
 
     public function test_login_dengan_kredensial_benar_mengarah_ke_dashboard(): void

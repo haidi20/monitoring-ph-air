@@ -269,19 +269,25 @@ class MonitoringController extends Controller
     /**
      * Menyusun payload lengkap untuk dashboard/detail/API.
      *
-     * Untuk setiap sensor: ambil 50 data terakhir (dibalik menjadi urutan
-     * waktu naik) sebagai deret grafik, plus satu nilai terbaru sebagai
-     * kondisi saat ini. Hasilnya struktur project + latest + series.
+     * Hanya memakai pembacaan hari ini (zona waktu aplikasi) supaya grafik
+     * tidak mencampur data historis lama. Untuk setiap sensor: ambil 50 data
+     * terakhir hari ini (dibalik menjadi urutan waktu naik) sebagai deret
+     * grafik, plus satu nilai terbaru sebagai kondisi saat ini. Bila belum
+     * ada data hari ini, nilai terbaru diisi '-' dan deret grafik kosong.
+     * Hasilnya struktur project + latest + series.
      */
     private function buildMonitoringPayload(object $project): array
     {
         $sensors = $this->resolveMonitoringSensors($project->id_project);
         $series = [];
         $latest = [];
+        [$startOfDay, $endOfDay] = $this->todayRange();
 
         foreach ($sensors as $sensor) {
             $rows = DB::table('data_input')
                 ->where('id_sensor_project', $sensor->id_sensor_project)
+                ->where('waktu', '>=', $startOfDay)
+                ->where('waktu', '<', $endOfDay)
                 ->orderByDesc('id_input')
                 ->limit(50)
                 ->get(['waktu', 'nilai'])
@@ -292,6 +298,8 @@ class MonitoringController extends Controller
             $values = $rows->map(fn ($row) => is_numeric($row->nilai) ? (float) $row->nilai : $row->nilai)->values()->all();
             $current = DB::table('data_input')
                 ->where('id_sensor_project', $sensor->id_sensor_project)
+                ->where('waktu', '>=', $startOfDay)
+                ->where('waktu', '<', $endOfDay)
                 ->orderByDesc('id_input')
                 ->first();
 
@@ -318,6 +326,24 @@ class MonitoringController extends Controller
             ],
             'latest' => $latest,
             'series' => $series,
+        ];
+    }
+
+    /**
+     * Rentang satu hari penuh pada zona waktu aplikasi.
+     *
+     * Dipakai sebagai batas bawah (inklusif) dan batas atas (eksklusif)
+     * query data_input sehingga hanya pembacaan hari ini yang terambil.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function todayRange(): array
+    {
+        $start = Carbon::today();
+
+        return [
+            $start->format('Y-m-d H:i:s'),
+            $start->copy()->addDay()->format('Y-m-d H:i:s'),
         ];
     }
 
