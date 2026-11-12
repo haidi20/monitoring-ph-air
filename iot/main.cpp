@@ -128,6 +128,20 @@ const char* apikey = "e2907e0d85c49fcbff5ac006c696f6f9";
 unsigned long lastSend = 0;
 unsigned long lastLCD = 0;
 
+/*
+  SEND_INTERVAL_MS adalah jarak antar pengiriman ke server.
+  3000 ms = 3 detik. Nilai ini menentukan kecepatan data di dashboard.
+*/
+const unsigned long SEND_INTERVAL_MS = 3000;
+
+/*
+  Klien TLS dan HTTP global agar koneksi HTTPS bisa dipakai ulang
+  antar pengiriman (tanpa handshake baru tiap kirim).
+*/
+WiFiClientSecure tlsClient;
+HTTPClient http;
+bool tlsSiap = false;
+
 // ================= WIFI CONNECT ===================
 /*
   Method wifiReconnect()
@@ -175,10 +189,12 @@ void kirimData(float suhu, float kekeruhan, float ph, bool phValid) {
   // Jika WiFi belum tersambung, data tidak dikirim agar tidak error.
   if (WiFi.status() != WL_CONNECTED) return;
 
-  HTTPClient http;
-  WiFiClientSecure client;
-  client.setCACert(kIsrgRootX1Pem);
-  client.setHandshakeTimeout(5);
+  // Siapkan TLS sekali saja; koneksi berikutnya dipakai ulang.
+  if (!tlsSiap) {
+    tlsClient.setCACert(kIsrgRootX1Pem);
+    tlsClient.setHandshakeTimeout(5);
+    tlsSiap = true;
+  }
 
   // Gabungkan alamat server, apikey, dan nilai sensor menjadi satu URL.
   String url = String(server_url) + apikey +
@@ -189,18 +205,25 @@ void kirimData(float suhu, float kekeruhan, float ph, bool phValid) {
   if (phValid) url += "&phair=" + String(ph, 2);
 
   // Mulai request HTTP ke URL yang sudah dibuat.
+  // setReuse(true) mempertahankan socket HTTPS antar kiriman.
+  http.setReuse(true);
   http.setConnectTimeout(5000);
   http.setTimeout(5000);
-  http.begin(client, url);
+  http.begin(tlsClient, url);
 
   // Jalankan request GET dan simpan kode balasan server.
   // HTTP_CODE_OK bernilai 200, artinya server menerima request dengan sukses.
   int code = http.GET();
 
   if (code == HTTP_CODE_OK) Serial.println("Server OK");
-  else Serial.println("HTTP Error: " + String(code));
+  else {
+    Serial.println("HTTP Error: " + String(code));
+    // Koneksi rusak: tutup agar kiriman berikutnya handshake ulang.
+    tlsClient.stop();
+    tlsSiap = false;
+  }
 
-  // Tutup koneksi HTTP agar memori tidak boros.
+  // Akhiri transaksi HTTP. Dengan setReuse(true) socket tetap terbuka.
   http.end();
 }
 
@@ -358,6 +381,11 @@ void setup() {
   // Mulai sensor suhu DS18B20.
   sensors.begin();
 
+  // Mode non-blocking: konversi suhu berjalan di latar, hasil dibaca
+  // pada putaran loop berikutnya (tidak menunggu ~750 ms).
+  sensors.setWaitForConversion(false);
+  sensors.requestTemperatures();
+
   // Mulai koneksi WiFi.
   WiFi.begin(ssid, password);
 
@@ -442,18 +470,16 @@ void loop() {
   else kondisi = "Kotor";                       // 0-20: kotor.
 
   // ===== SUHU AIR =====
-  // Minta sensor DS18B20 melakukan pembacaan suhu terbaru.
-  sensors.requestTemperatures();
-
   /*
-    Ambil suhu sensor pertama dalam Celcius.
-    Hasil suhu dikirim ke server sebagai field suhu.
+    Ambil hasil konversi suhu yang diminta pada putaran sebelumnya, lalu
+    minta konversi berikutnya. Pembacaan suhu jadi tidak memblokir loop.
 
     Contoh arti angka:
     - 26.50 berarti suhu air 26.50 derajat Celcius.
     - Jika hasil -127, biasanya sensor DS18B20 tidak terbaca atau kabel bermasalah.
   */
   float suhu = sensors.getTempCByIndex(0);
+  sensors.requestTemperatures();
 
   // ===== pH AIR =====
   // Baca tegangan analog sensor pH lalu konversi dari ADC ke Volt.
@@ -524,18 +550,17 @@ void loop() {
     lastLCD = millis();
   }
 
-  // ===== KIRIM SERVER SETIAP 7 DETIK =====
+  // ===== KIRIM SERVER SETIAP SEND_INTERVAL_MS (3 DETIK) =====
   /*
-    Data dikirim tiap 7000 ms = 7 detik.
-    Angka ini bisa diubah:
-    - lebih kecil: data lebih realtime, tapi server lebih sering menerima request.
-    - lebih besar: server lebih ringan, tapi data lebih jarang diperbarui.
+    Jadwal kirim memakai penambahan tetap agar durasi kerja sensor dan
+    HTTP tidak menumpuk menjadi drift. Jika tertinggal lebih dari satu
+    interval (misal WiFi sempat putus), jadwal diselaraskan ulang.
   */
-  if (millis() - lastSend > 7000) {
+  if (millis() - lastSend >= SEND_INTERVAL_MS) {
     // Kirim suhu, percent kekeruhan, dan nilai pH ke server Laravel.
     kirimData(suhu, percent, nilai_ph, ph_valid);
 
-    // Simpan waktu kirim terakhir.
-    lastSend = millis();
+    lastSend += SEND_INTERVAL_MS;
+    if (millis() - lastSend >= SEND_INTERVAL_MS) lastSend = millis();
   }
 }

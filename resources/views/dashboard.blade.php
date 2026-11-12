@@ -160,7 +160,7 @@ function refreshDashboard() {
 }
 
 ['phair', 'suhu', 'kekeruhan'].forEach(makeChart);
-setInterval(refreshDashboard, 1000);
+setInterval(refreshDashboard, 10000);
 </script>
 </body>
 </html>

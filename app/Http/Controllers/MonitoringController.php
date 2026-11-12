@@ -270,10 +270,11 @@ class MonitoringController extends Controller
      * Menyusun payload lengkap untuk dashboard/detail/API.
      *
      * Hanya memakai pembacaan hari ini (zona waktu aplikasi) supaya grafik
-     * tidak mencampur data historis lama. Untuk setiap sensor: ambil 50 data
-     * terakhir hari ini (dibalik menjadi urutan waktu naik) sebagai deret
-     * grafik, plus satu nilai terbaru sebagai kondisi saat ini. Bila belum
-     * ada data hari ini, nilai terbaru diisi '-' dan deret grafik kosong.
+     * tidak mencampur data historis lama. Deret grafik diagregasi rata-rata
+     * per menit agar seluruh hari tetap tampil walaupun sensor mengirim tiap
+     * beberapa detik (satu hari kira-kira 1.440 titik, bukan puluhan ribu).
+     * Nilai terbaru tetap memakai pembacaan mentah paling akhir hari ini.
+     * Bila belum ada data hari ini, nilai terbaru diisi '-' dan deret kosong.
      * Hasilnya struktur project + latest + series.
      */
     private function buildMonitoringPayload(object $project): array
@@ -284,18 +285,10 @@ class MonitoringController extends Controller
         [$startOfDay, $endOfDay] = $this->todayRange();
 
         foreach ($sensors as $sensor) {
-            $rows = DB::table('data_input')
-                ->where('id_sensor_project', $sensor->id_sensor_project)
-                ->where('waktu', '>=', $startOfDay)
-                ->where('waktu', '<', $endOfDay)
-                ->orderByDesc('id_input')
-                ->limit(50)
-                ->get(['waktu', 'nilai'])
-                ->reverse()
-                ->values();
+            $rows = $this->aggregateTodayPerMinute($sensor->id_sensor_project, $startOfDay, $endOfDay);
 
-            $labels = $rows->map(fn ($row) => $this->formatReadableDateTime($row->waktu))->values()->all();
-            $values = $rows->map(fn ($row) => is_numeric($row->nilai) ? (float) $row->nilai : $row->nilai)->values()->all();
+            $labels = $rows->map(fn ($row) => $this->formatReadableDateTime($row->waktu_awal))->values()->all();
+            $values = $rows->map(fn ($row) => round((float) $row->rata, 2))->values()->all();
             $current = DB::table('data_input')
                 ->where('id_sensor_project', $sensor->id_sensor_project)
                 ->where('waktu', '>=', $startOfDay)
@@ -345,6 +338,36 @@ class MonitoringController extends Controller
             $start->format('Y-m-d H:i:s'),
             $start->copy()->addDay()->format('Y-m-d H:i:s'),
         ];
+    }
+
+    /**
+     * Merata-ratakan pembacaan satu sensor per menit untuk rentang hari ini.
+     *
+     * Ekspresi pengelompokan dan cast dibuat per driver karena MySQL memakai
+     * DATE_FORMAT sedangkan SQLite (dipakai test) memakai strftime.
+     * Kolom nilai bertipe teks, jadi di-cast ke angka sebelum AVG.
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function aggregateTodayPerMinute(string $idSensorProject, string $startOfDay, string $endOfDay)
+    {
+        $driver = DB::connection()->getDriverName();
+
+        $bucket = $driver === 'sqlite'
+            ? "strftime('%Y-%m-%d %H:%M', waktu)"
+            : "DATE_FORMAT(waktu, '%Y-%m-%d %H:%i')";
+        $average = $driver === 'sqlite'
+            ? 'AVG(CAST(nilai AS REAL))'
+            : 'AVG(CAST(nilai AS DECIMAL(12,4)))';
+
+        return DB::table('data_input')
+            ->selectRaw("{$bucket} as bucket, {$average} as rata, MIN(waktu) as waktu_awal")
+            ->where('id_sensor_project', $idSensorProject)
+            ->where('waktu', '>=', $startOfDay)
+            ->where('waktu', '<', $endOfDay)
+            ->groupBy('bucket')
+            ->orderBy('bucket')
+            ->get();
     }
 
     /**

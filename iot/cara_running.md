@@ -141,12 +141,15 @@ Arti angka:
 
 ## 10. Data yang Dikirim ke Server
 
-Program akan mengirim data ke server setiap `7000 ms` atau 7 detik.
+Program akan mengirim data ke server setiap `3000 ms` atau 3 detik
+(`SEND_INTERVAL_MS` di firmware). Pembacaan suhu memakai mode non-blocking
+dan koneksi HTTPS dipakai ulang, sehingga periode kirim tetap mendekati
+3 detik dan tidak melar karena waktu kerja sensor.
 
 Endpoint server yang dipakai:
 
 ```text
-http://43.156.137.225/server.php
+https://skripsi.haidinata.my.id/server.php
 ```
 
 Parameter yang dikirim:

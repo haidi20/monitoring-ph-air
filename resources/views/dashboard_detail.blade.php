@@ -109,7 +109,7 @@ function refreshDetail() {
         });
 }
 
-setInterval(refreshDetail, 1000);
+setInterval(refreshDetail, 10000);
 </script>
 </body>
 </html>

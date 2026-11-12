@@ -185,6 +185,43 @@ class MonitoringTest extends TestCase
             ->assertJsonCount(0, 'series.phair.values');
     }
 
+    public function test_grafik_hari_ini_diagregasi_per_menit(): void
+    {
+        $base = Carbon::today()->addHours(9);
+
+        DB::table('data_input')->insert([
+            [
+                'id_input' => 'INP0001',
+                'id_project' => 'PRJ1',
+                'id_sensor_project' => 'SP1',
+                'waktu' => $base->copy()->addSeconds(5)->format('Y-m-d H:i:s'),
+                'nilai' => '6.00',
+            ],
+            [
+                'id_input' => 'INP0002',
+                'id_project' => 'PRJ1',
+                'id_sensor_project' => 'SP1',
+                'waktu' => $base->copy()->addSeconds(35)->format('Y-m-d H:i:s'),
+                'nilai' => '8.00',
+            ],
+            [
+                'id_input' => 'INP0003',
+                'id_project' => 'PRJ1',
+                'id_sensor_project' => 'SP1',
+                'waktu' => $base->copy()->addMinutes(1)->format('Y-m-d H:i:s'),
+                'nilai' => '9.00',
+            ],
+        ]);
+
+        $response = $this->getJson('/api/monitoring');
+
+        $response->assertOk()
+            ->assertJsonCount(2, 'series.phair.values')
+            ->assertJsonPath('series.phair.values.0', 7)
+            ->assertJsonPath('series.phair.values.1', 9)
+            ->assertJsonPath('latest.phair.nilai', '9.00');
+    }
+
     public function test_login_dengan_kredensial_benar_mengarah_ke_dashboard(): void
     {
         $this->post('/login', ['username' => 'tester', 'password' => 'secret123'])
